@@ -17,6 +17,27 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Mystery Message",
   description: "Where your identity remains a secret.",
+  metadataBase: new URL("https://mysterymessage-delta.vercel.app"),
+
+  openGraph: {
+    title: "Mystery Message",
+    description:
+      "Where your identity remains a secret. Share your thoughts without revealing who you are.",
+    type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Mystery Message",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@harshits_twt",
+    images: ["/og-image.png"],
+  },
 };
 
 export default function RootLayout({
