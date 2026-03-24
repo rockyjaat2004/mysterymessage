@@ -1,50 +1,96 @@
-import { streamText, convertToModelMessages } from "ai";
-import { openai } from "@ai-sdk/openai";
-import { z } from "zod";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
+
+// Edge runtime is required for high-performance streaming
 export const runtime = "edge";
 
 export async function POST(req: Request) {
   try {
-    const { messages } = await req.json();
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const systemPrompt = `You are a helpful assistant that generates engaging, friendly questions for an anonymous social messaging platform. 
-    
-When asked to generate questions:
-- Create open-ended and engaging questions
-- Format them as a single string separated by '||'
-- Avoid personal or sensitive topics
-- Focus on universal themes that encourage friendly interaction
-- Ensure questions are intriguing and contribute to a positive conversational environment
+    const prompt = 
+      "Create a list of three open-ended and engaging questions formatted as a single string. " +
+      "Each question should be separated by '||'. Do not include numbers or bullet points. " +
+      "Example: 'What’s a hobby you’ve recently started?||If you could have dinner with any historical figure, who would it be?||What’s a simple thing that makes you happy?'";
 
-Example format: 'What's a hobby you've recently started?||If you could have dinner with any historical figure, who would it be?||What's a simple thing that makes you happy?'`;
+    const result = await model.generateContentStream(prompt);
 
-    // Await the conversion of messages
-    const convertedMessages = await convertToModelMessages(messages);
-
-    const result = streamText({
-      model: openai("gpt-4o"), // or 'gpt-4-turbo', 'gpt-3.5-turbo'
-      system: systemPrompt,
-      messages: convertedMessages,
-      temperature: 0.8,
-      maxRetries: 3,
+    // Create a stream to pipe the AI response to the frontend
+    const stream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        try {
+          for await (const chunk of result.stream) {
+            const text = chunk.text();
+            controller.enqueue(encoder.encode(text));
+          }
+        } catch (err) {
+          controller.error(err);
+        } finally {
+          controller.close();
+        }
+      },
     });
 
-    return result.toTextStreamResponse();
+    return new Response(stream, {
+      headers: { 
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache",
+      },
+    });
   } catch (error) {
-    console.error("An unexpected error occurred:", error);
-    return new Response(
-      JSON.stringify({
-        error: "Internal Server Error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "An unexpected error occurred",
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    console.error("API Error:", error);
+    return new Response(JSON.stringify({ error: "Failed to generate" }), { status: 500 });
   }
 }
+
+
+
+// import { GoogleGenerativeAI } from "@google/generative-ai";
+// import { NextResponse } from "next/server";
+
+// // Initialize the API with your key
+// const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
+
+// export const runtime = "edge";
+
+// export async function POST(req: Request) {
+//   try {
+//     const prompt = "Create a list of three open-ended and engaging questions formatted as a single string. Each question should be separated by '||'. These questions are for an anonymous social messaging platform and should be suitable for a diverse audience. Avoid personal or sensitive topics. Example format: 'What’s a hobby you’ve recently started?||If you could have dinner with any historical figure, who would it be?||What’s a simple thing that makes you happy?'";
+
+//     // Use the 2026 stable model
+//     const model = genAI.getGenerativeModel({ 
+//       model: "gemini-2.5-flash" 
+//     });
+
+//     const result = await model.generateContentStream(prompt);
+
+//     // Create a native ReadableStream for the response
+//     const stream = new ReadableStream({
+//       async start(controller) {
+//         try {
+//           for await (const chunk of result.stream) {
+//             const text = chunk.text();
+//             controller.enqueue(new TextEncoder().encode(text));
+//           }
+//         } catch (err) {
+//           controller.error(err);
+//         } finally {
+//           controller.close();
+//         }
+//       },
+//     });
+
+//     return new Response(stream, {
+//       headers: { "Content-Type": "text/plain; charset=utf-8" },
+//     });
+
+//   } catch (error: any) {
+//     console.error("Gemini API Error:", error);
+//     return NextResponse.json(
+//       { error: "Internal Server Error", message: error?.message || "Something went wrong" },
+//       { status: 500 }
+//     );
+//   }
+// }
